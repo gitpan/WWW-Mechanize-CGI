@@ -1,0 +1,46 @@
+NAME
+    WWW::Mechanize::CGI - Use WWW::Mechanize with CGI applications.
+
+SYNOPSIS
+        use CGI;
+        use WWW::Mechanize::CGI;
+
+        my $mech = WWW::Mechanize::CGI->new;
+        $mech->cgi( sub {
+        
+            my $q = CGI->new;
+        
+            print $q->header,
+                  $q->start_html('Hello World'),
+                  $q->h1('Hello World'),
+                  $q->end_html;
+        });
+    
+        my $response = $mech->get('http://localhost/');
+
+DESCRIPTION
+    Provides a convenient way of using CGI applications with WWW::Mechanize.
+
+METHODS
+    new Behaves like, and calls, WWW::Mechanize's "new" method. Any parms
+        passed in get passed to WWW::Mechanize's constructor.
+
+    cgi Coderef to be used to execute the CGI application.
+
+    env( [, key => value ] )
+        Additional environment variables to be used in CGI.
+
+            $mech->env( DOCUMENT_ROOT=> '/export/www/myapp' );
+
+SEE ALSO
+    WWW::Mechanize
+    LWP::UserAgent
+    HTTP::Request::AsCGI
+
+AUTHOR
+    Christian Hansen, "ch@ngmedia.com"
+
+LICENSE
+    This library is free software. You can redistribute it and/or modify it
+    under the same terms as perl itself.
+

@@ -1,0 +1,9 @@
+Changes
+lib/WWW/Mechanize/CGI.pm
+Makefile.PL
+MANIFEST			This list of files
+README
+t/01use.t
+t/02basic.t
+t/03forking.t
+META.yml                                 Module meta-data (added by MakeMaker)
