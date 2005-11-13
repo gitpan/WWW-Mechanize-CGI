@@ -5,11 +5,12 @@ use warnings;
 use base 'WWW::Mechanize';
 
 use Carp;
+use IO::Pipe;
 use HTTP::Request;
 use HTTP::Request::AsCGI;
 use HTTP::Response;
 
-our $VERSION = 0.1;
+our $VERSION = 0.2;
 
 sub cgi {
     my $self = shift;
@@ -19,6 +20,38 @@ sub cgi {
     }
 
     return $self->{cgi};
+}
+
+sub cgi_application {
+    my ( $self, $application ) = @_;
+
+    unless ( -e $application ) {
+        croak( qq/Path to application '$application' does not exist./ );
+    }
+
+    unless ( -f _ ) {
+        croak( qq/Path to application '$application' is not a file./ );
+    }
+
+    unless ( -x _ ) {
+        croak( qq/Application '$application' is not executable./ );
+    }
+
+    my $cgi = sub {
+
+        my $status = system($application);
+        my $value  = $status >> 8;
+
+        if ( $status == -1 ) {
+            croak( qq/Failed to execute application '$application'. Reason: '$!'/ );
+        }
+
+        if ( $value > 0 ) {
+            croak( qq/Application '$application' exited with value: $value/ );
+        }
+    };
+
+    $self->cgi($cgi);
 }
 
 sub fork {
@@ -48,14 +81,18 @@ sub _make_request {
         $self->cookie_jar->add_cookie_header($request);
     }
 
-    my ( $error, $kid, $response );
-
     my $c = HTTP::Request::AsCGI->new( $request, $self->env );
 
-    $kid = CORE::fork() if $self->fork;
+    my ( $error, $kid, $pipe, $response );
 
-    if ( $self->fork && ! defined $kid ) {
-        croak("Can't fork() kid: $!");
+    if ( $self->fork ) {
+
+        $pipe = IO::Pipe->new;
+        $kid  = CORE::fork();
+
+        unless ( defined $kid ) {
+            croak("Can't fork() kid: $!");
+        }
     }
 
     unless ( $kid ) {
@@ -66,18 +103,30 @@ sub _make_request {
 
         $c->restore;
 
-        exit(1) if $self->fork && $@;
-        exit(0) if $self->fork;
+        if ( $self->fork ) {
+
+            $pipe->writer;
+            $pipe->write($@) if $@;
+
+            exit(1) if $@;
+            exit(0);
+        }
     }
 
-    waitpid( $kid, 0 ) if $self->fork;
+    $error = $@;
 
-    $error = $self->fork ? $? >> 8 : $@;
+    if ( $self->fork ) {
+
+        waitpid( $kid, 0 );
+
+        $pipe->reader;
+        $pipe->read( $error, 4096 ) if ( $? >> 8 ) > 0;
+    }
 
     if ( $error ) {
-        $response = HTTP::Response->new(500);
+        $response = HTTP::Response->new( 500, 'Internal Server Error' );
         $response->date( time() );
-        $response->header( 'X-Error' => $error ) unless $self->fork;
+        $response->header( 'X-Error' => $error );
         $response->content( $response->error_as_HTML );
         $response->content_type('text/html');
     }
@@ -85,7 +134,7 @@ sub _make_request {
         $response = $c->response;
     }
 
-    $response->header( 'Content-Base', $request->uri );
+    $response->header( 'Content-Base' => $request->uri );
     $response->request($request);
 
     if ( $self->cookie_jar ) {
@@ -107,8 +156,18 @@ WWW::Mechanize::CGI - Use WWW::Mechanize with CGI applications.
 
     use CGI;
     use WWW::Mechanize::CGI;
-
-    my $mech = WWW::Mechanize::CGI->new;
+    
+    # Using a external CGI application
+    
+    $mech = WWW::Mechanize::CGI->new;
+    $mech->cgi_application('/path/to/cgi/executable.cgi');
+    
+    $response = $mech->get('http://localhost/');
+    
+        
+    # Using a inline CGI callback
+    
+    $mech = WWW::Mechanize::CGI->new;
     $mech->cgi( sub {
         
         my $q = CGI->new;
@@ -119,7 +178,7 @@ WWW::Mechanize::CGI - Use WWW::Mechanize with CGI applications.
               $q->end_html;
     });
     
-    my $response = $mech->get('http://localhost/');
+    $response = $mech->get('http://localhost/');
 
 =head1 DESCRIPTION
 
@@ -138,11 +197,19 @@ passed in get passed to WWW::Mechanize's constructor.
 
 Coderef to be used to execute the CGI application.
 
+=item cgi_application('/path/to/cgi/executable.cgi')
+
+Path to CGI executable.
+
 =item env( [, key => value ] )
 
 Additional environment variables to be used in CGI.
 
     $mech->env( DOCUMENT_ROOT=> '/export/www/myapp' );
+
+=item fork
+
+Set to a true value if you want to fork() before executing CGI.
 
 =back
 
