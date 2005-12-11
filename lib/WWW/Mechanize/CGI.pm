@@ -5,12 +5,13 @@ use warnings;
 use base 'WWW::Mechanize';
 
 use Carp;
-use IO::Pipe;
+use File::Spec;
 use HTTP::Request;
 use HTTP::Request::AsCGI;
 use HTTP::Response;
+use IO::Pipe;
 
-our $VERSION = 0.2;
+our $VERSION = 0.3;
 
 sub cgi {
     my $self = shift;
@@ -24,6 +25,12 @@ sub cgi {
 
 sub cgi_application {
     my ( $self, $application ) = @_;
+
+    unless ( File::Spec->file_name_is_absolute($application) ) {
+        $application = File::Spec->rel2abs($application);
+    }
+
+    $self->env( SCRIPT_FILENAME => $application, $self->env );
 
     unless ( -e $application ) {
         croak( qq/Path to application '$application' does not exist./ );
@@ -164,7 +171,7 @@ WWW::Mechanize::CGI - Use WWW::Mechanize with CGI applications.
     
     $response = $mech->get('http://localhost/');
     
-        
+    
     # Using a inline CGI callback
     
     $mech = WWW::Mechanize::CGI->new;
@@ -203,9 +210,10 @@ Path to CGI executable.
 
 =item env( [, key => value ] )
 
-Additional environment variables to be used in CGI.
+Set/Get additional environment variables to be used in CGI. Takes a hash and 
+returns a hash.
 
-    $mech->env( DOCUMENT_ROOT=> '/export/www/myapp' );
+    $mech->env( DOCUMENT_ROOT => '/export/www/myapp' );
 
 =item fork
 
@@ -216,6 +224,8 @@ Set to a true value if you want to fork() before executing CGI.
 =head1 SEE ALSO
 
 =over 4
+
+=item L<Test::WWW::Mechanize::CGI>
 
 =item L<WWW::Mechanize>
 
